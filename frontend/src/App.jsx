@@ -82,87 +82,78 @@ export default function App() {
     appendLog("停止しました");
   }
 
-  function run() {
+  async function run() {
     if (!prompt.trim()) return;
 
     resetOutput();
     setRunning(true);
     appendLog(`指示: ${prompt}`);
 
-    // SSE接続（環境変数からAPI URLを取得、ローカル開発時は相対パス）
     const apiUrl = import.meta.env.VITE_API_URL || "";
     const url = `${apiUrl}/run?user_text=${encodeURIComponent(prompt)}`;
     
-    console.log("🔴 [DEBUG] Creating EventSource");
+    console.log("🔴 [DEBUG] Starting request");
     console.log("🔴 [DEBUG] URL:", url);
-    console.log("🔴 [DEBUG] API URL from env:", import.meta.env.VITE_API_URL);
     
-    const es = new EventSource(url);
-    esRef.current = es;
-    
-    // 接続状態の確認
-    console.log("🔴 [DEBUG] EventSource readyState:", es.readyState);
-    // 0: CONNECTING, 1: OPEN, 2: CLOSED
-
-    // 接続状態を定期的に確認（デバッグ用）
-    const checkInterval = setInterval(() => {
-      console.log("🔴 [DEBUG] EventSource state:", {
-        readyState: es.readyState,
-        url: es.url,
-        withCredentials: es.withCredentials
-      });
-    }, 1000);
-
-    es.onopen = () => {
-      console.log("🟢 [DEBUG] EventSource OPENED");
-      clearInterval(checkInterval);
-    };
-
-    es.onmessage = (event) => {
-      console.log("🔵 [DEBUG] onmessage called!");
-      console.log("🔵 RAW EVENT:", event.data);
-      let data;
-      try {
-        data = JSON.parse(event.data.trim());
-        console.log("🟢 PARSED DATA:", data);
-      } catch (e) {
-        console.error("JSON parse error:", event.data);
-        return;
-      }
-
-      if (data.type === "log") {
-        appendLog(data.message);
-        return;
-      }
-
-      if (data.type === "fill") {
-        console.log("🟡 FILL EVENT:", data.field, data.value);
-        // 安全装置：UIに存在しないフィールドのチェック
-        if (!(data.field in form)) {
-          console.warn("UI does not know this field:", data.field);
-          return;
-        }
-        // ★ これが無かったのが原因
-        console.log("🟢 CALLING handleFill:", data.field, data.value);
-        handleFill(data.field, data.value);
-        return;
-      }
-
-      console.warn("Unknown SSE event:", data);
-    };
-
-    es.onerror = (error) => {
-      console.error("🔴 [DEBUG] EventSource ERROR:", error);
-      console.log("🔴 [DEBUG] EventSource readyState on error:", es.readyState);
-      clearInterval(checkInterval);
+    try {
+      // SSEが使えない場合の代替：fetch + ポーリング
+      const response = await fetch(url);
+      console.log("🔴 [DEBUG] Response status:", response.status);
+      console.log("🔴 [DEBUG] Response headers:", Object.fromEntries(response.headers.entries()));
       
-      // LangGraphが終わると接続が閉じることがあるので、ここでは"終了扱い"
-      es.close();
-      esRef.current = null;
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const text = await response.text();
+      console.log("🔴 [DEBUG] Response text length:", text.length);
+      console.log("🔴 [DEBUG] Response text (first 500 chars):", text.substring(0, 500));
+      
+      // SSE形式のテキストをパース
+      const lines = text.split('\n').filter(line => line.trim());
+      console.log("🔴 [DEBUG] Parsed lines count:", lines.length);
+      
+      let queue = Promise.resolve();
+      
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const jsonStr = line.substring(6).trim();
+          if (!jsonStr) continue;
+          
+          try {
+            const data = JSON.parse(jsonStr);
+            console.log("🟢 PARSED DATA:", data);
+            
+            if (data.type === "log") {
+              appendLog(data.message);
+            } else if (data.type === "fill") {
+              console.log("🟡 FILL EVENT:", data.field, data.value);
+              if (!(data.field in form)) {
+                console.warn("UI does not know this field:", data.field);
+                continue;
+              }
+              console.log("🟢 CALLING handleFill:", data.field, data.value);
+              queue = queue.then(() => handleFill(data.field, data.value));
+            } else {
+              console.warn("Unknown SSE event:", data);
+            }
+          } catch (e) {
+            console.error("JSON parse error:", jsonStr, e);
+          }
+        }
+      }
+      
+      await queue;
       setRunning(false);
       setActiveField(null);
-      appendLog("実行終了（接続クローズ）");
-    };
+      appendLog("実行完了");
+      
+    } catch (error) {
+      console.error("🔴 [DEBUG] Fetch error:", error);
+      appendLog(`エラー: ${error.message}`);
+      setRunning(false);
+      setActiveField(null);
+    }
   }
 
   return (
