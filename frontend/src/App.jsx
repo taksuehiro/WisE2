@@ -92,10 +92,34 @@ export default function App() {
     // SSE接続（環境変数からAPI URLを取得、ローカル開発時は相対パス）
     const apiUrl = import.meta.env.VITE_API_URL || "";
     const url = `${apiUrl}/run?user_text=${encodeURIComponent(prompt)}`;
+    
+    console.log("🔴 [DEBUG] Creating EventSource");
+    console.log("🔴 [DEBUG] URL:", url);
+    console.log("🔴 [DEBUG] API URL from env:", import.meta.env.VITE_API_URL);
+    
     const es = new EventSource(url);
     esRef.current = es;
+    
+    // 接続状態の確認
+    console.log("🔴 [DEBUG] EventSource readyState:", es.readyState);
+    // 0: CONNECTING, 1: OPEN, 2: CLOSED
+
+    // 接続状態を定期的に確認（デバッグ用）
+    const checkInterval = setInterval(() => {
+      console.log("🔴 [DEBUG] EventSource state:", {
+        readyState: es.readyState,
+        url: es.url,
+        withCredentials: es.withCredentials
+      });
+    }, 1000);
+
+    es.onopen = () => {
+      console.log("🟢 [DEBUG] EventSource OPENED");
+      clearInterval(checkInterval);
+    };
 
     es.onmessage = (event) => {
+      console.log("🔵 [DEBUG] onmessage called!");
       console.log("🔵 RAW EVENT:", event.data);
       let data;
       try {
@@ -127,7 +151,11 @@ export default function App() {
       console.warn("Unknown SSE event:", data);
     };
 
-    es.onerror = () => {
+    es.onerror = (error) => {
+      console.error("🔴 [DEBUG] EventSource ERROR:", error);
+      console.log("🔴 [DEBUG] EventSource readyState on error:", es.readyState);
+      clearInterval(checkInterval);
+      
       // LangGraphが終わると接続が閉じることがあるので、ここでは"終了扱い"
       es.close();
       esRef.current = null;
