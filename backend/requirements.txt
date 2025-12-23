@@ -1,0 +1,8 @@
+# ローカル開発用（FastAPI版）
+fastapi>=0.110
+uvicorn[standard]>=0.27
+mangum>=0.17.0
+
+# LangGraph（Lambda版でも必要）
+langgraph>=0.2
+
