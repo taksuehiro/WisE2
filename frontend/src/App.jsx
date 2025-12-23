@@ -96,9 +96,11 @@ export default function App() {
     esRef.current = es;
 
     es.onmessage = (event) => {
+      console.log("🔵 RAW EVENT:", event.data);
       let data;
       try {
         data = JSON.parse(event.data.trim());
+        console.log("🟢 PARSED DATA:", data);
       } catch (e) {
         console.error("JSON parse error:", event.data);
         return;
@@ -110,12 +112,14 @@ export default function App() {
       }
 
       if (data.type === "fill") {
+        console.log("🟡 FILL EVENT:", data.field, data.value);
         // 安全装置：UIに存在しないフィールドのチェック
         if (!(data.field in form)) {
           console.warn("UI does not know this field:", data.field);
           return;
         }
         // ★ これが無かったのが原因
+        console.log("🟢 CALLING handleFill:", data.field, data.value);
         handleFill(data.field, data.value);
         return;
       }
