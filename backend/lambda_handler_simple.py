@@ -16,6 +16,22 @@ def handler(event, context):
     Returns:
         dict: API Gatewayレスポンス
     """
+    # 共通CORSヘッダー
+    cors_headers = {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
+    }
+    
+    # OPTIONSリクエスト（CORS preflight）の処理
+    if event.get("httpMethod") == "OPTIONS":
+        return {
+            "statusCode": 200,
+            "headers": cors_headers,
+            "body": ""
+        }
+    
     try:
         # クエリパラメータからuser_textを取得
         query_params = event.get("queryStringParameters") or {}
@@ -24,25 +40,8 @@ def handler(event, context):
         if not user_text:
             return {
                 "statusCode": 400,
-                "headers": {
-                    "Content-Type": "application/json",
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Headers": "Content-Type",
-                    "Access-Control-Allow-Methods": "GET,OPTIONS"
-                },
+                "headers": cors_headers,
                 "body": json.dumps({"error": "user_text parameter is required"}, ensure_ascii=False)
-            }
-        
-        # OPTIONSリクエスト（CORS preflight）の処理
-        if event.get("httpMethod") == "OPTIONS":
-            return {
-                "statusCode": 200,
-                "headers": {
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Headers": "Content-Type",
-                    "Access-Control-Allow-Methods": "GET,OPTIONS"
-                },
-                "body": ""
             }
         
         # LangGraphを実行してイベントを収集
@@ -52,30 +51,31 @@ def handler(event, context):
         # 注意: API Gatewayはストリーミングを直接サポートしないため、
         # すべてのイベントを一度に返すか、別の方法（WebSocket等）を検討
         
-        # 簡易版: すべてのイベントをJSON配列で返す
+        # SSE形式のレスポンス
+        sse_headers = {
+            "Content-Type": "text/event-stream",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive"
+        }
+        
+        body = "\n".join([
+            f"data: {json.dumps(event, ensure_ascii=False)}\n"
+            for event in events
+        ]) + "\n\n"
+        
         return {
             "statusCode": 200,
-            "headers": {
-                "Content-Type": "text/event-stream",
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": "Content-Type",
-                "Access-Control-Allow-Methods": "GET,OPTIONS",
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive"
-            },
-            "body": "\n".join([
-                f"data: {json.dumps(event, ensure_ascii=False)}\n"
-                for event in events
-            ]) + "\n\n"
+            "headers": sse_headers,
+            "body": body
         }
         
     except Exception as e:
         return {
             "statusCode": 500,
-            "headers": {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*"
-            },
+            "headers": cors_headers,
             "body": json.dumps({
                 "error": str(e)
             }, ensure_ascii=False)

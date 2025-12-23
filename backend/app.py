@@ -130,21 +130,12 @@ graph = (
 
 app = FastAPI()
 
-# フロントから叩けるようCORS（ローカル + AWS環境対応）
-cors_origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
-# 環境変数からAmplifyドメインを取得（設定されている場合）
-amplify_domain = os.getenv("AMPLIFY_DOMAIN")
-if amplify_domain:
-    cors_origins.append(f"https://{amplify_domain}")
-    cors_origins.append(f"https://*.{amplify_domain}")
-
+# フロントから叩けるようCORS（全て許可）
+# 本番環境では特定ドメインに制限することを推奨
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
+    allow_origins=["*"],  # 全てのオリジンを許可（開発・デモ用）
+    allow_credentials=False,  # allow_origins=["*"]の場合はFalseにする必要がある
     allow_methods=["*"],
     allow_headers=["*"],
 )
